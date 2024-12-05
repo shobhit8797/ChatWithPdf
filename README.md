@@ -30,6 +30,8 @@ To install the MultiPDF Chat App, please follow these steps:
 2. Install the required dependencies by running the following command:
    ```
    pip install -r requirements.txt
+   pip install git+https://github.com/huggingface/transformers.git@2ef774211733f0acf8d3415f9284c49ef219e991
+
    ```
 
 3. Obtain an API key from OpenAI and add it to the `.env` file in the project directory.
