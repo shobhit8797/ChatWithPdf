@@ -32,30 +32,30 @@ def pdf_to_images(pdf_path: str, output_folder: str, dpi: int = 300) -> List[str
 
 
 # Step 2: Extract text and layout information from the PDF
-# def extract_text_with_layout(pdf_path: str) -> str:
-# """
-# Extracts text and layout information from a PDF using pdfplumber and OCR as a fallback.
-# """
-# text = ""
+def extract_text_with_layout(pdf_path: str) -> str:
+    """
+    Extracts text and layout information from a PDF using pdfplumber and OCR as a fallback.
+    """
+    text = ""
 
-# # First try to use pdfplumber for text-based extraction
-# with pdfplumber.open(pdf_path) as pdf:
-#     for page in pdf.pages:
-#         extracted_text = page.extract_text(layout=True)
-#         if extracted_text:
-#             text += extracted_text
-#         else:
-#             print("Empty page detected, OCR fallback will be used.")
+    # First try to use pdfplumber for text-based extraction
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            extracted_text = page.extract_text(layout=True)
+            if extracted_text:
+                text += extracted_text
+            else:
+                print("Empty page detected, OCR fallback will be used.")
 
-# print("Text extracted using pdfplumber.", len(text))
+    print("Text extracted using pdfplumber.", len(text))
 
-# # Check if text is empty, indicating a scanned PDF
-# if not text.strip():
-#     print("Text not found, using OCR fallback.")
-#     images = convert_from_path(pdf_path, dpi=300)
-#     for i, image in enumerate(images):
-#         text += f"\n--- Page {i + 1} ---\n"
-#         text += image_to_string(image)
+    # Check if text is empty, indicating a scanned PDF
+    if not text.strip():
+        print("Text not found, using OCR fallback.")
+        images = convert_from_path(pdf_path, dpi=300)
+        for i, image in enumerate(images):
+            text += f"\n--- Page {i + 1} ---\n"
+            text += image_to_string(image)
 
 
 # return text
