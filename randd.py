@@ -1,110 +1,137 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from pdf2image import convert_from_path
-from pytesseract import image_to_string
-import sys
 import re
-from PIL import Image
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+import pandas as pd
 import pdfplumber
 import torch
+from pdf2image import convert_from_path
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-def pdf_to_images(pdf_path, dpi=150):
-    """Converts a PDF file to a list of images."""
+# Global cache for the model and tokenizer
+cached_model = None
+cached_tokenizer = None
+
+
+def extract_text_and_tables(pdf_path, max_pages=5):
+    """Extract text and tables from the PDF."""
+    text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text(layout=True) or ""
+
+    return text
+
+    # extracted_data = {"text": "", "tables": []}
+    # try:
+    #     with pdfplumber.open(pdf_path) as pdf:
+    #         for page in pdf.pages[:max_pages]:
+    #             extracted_data["text"] += page.extract_text(layout=True) or ""
+    #             tables = page.extract_tables()
+    #             if tables:
+    #                 extracted_data["tables"].extend(tables)
+    # except Exception as e:
+    #     print(f"Error extracting text and tables: {e}")
+    # return extracted_data
+
+
+
+def initialize_model(model_id, device):
+    """Initialize or fetch the model and tokenizer."""
+    global cached_model, cached_tokenizer
+    if not cached_model or not cached_tokenizer:
+        cached_tokenizer = AutoTokenizer.from_pretrained(model_id)
+        cached_model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16 if device.type == "mps" else torch.float32,
+        ).to(device)
+    return cached_tokenizer, cached_model
+
+
+def ask_question(tokenizer, model, context, question):
+    """Ask a question to the model."""
     try:
-        Image.MAX_IMAGE_PIXELS = None  # Handle large images
-        return convert_from_path(pdf_path, dpi=dpi)
-    except Exception as e:
-        print(f"Error during PDF to image conversion: {e}")
-        sys.exit(1)
-
-
-def preprocess_image(image: Image.Image) -> Image.Image:
-    """Preprocess the image to RGB format."""
-    return image.convert("RGB")
-
-
-def extract_text_with_pdfplumber(pdf_path: str) -> str:
-    """Extract text from PDF using pdfplumber."""
-    extracted_text = ""
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_number in range(len(pdf.pages)):
-                page = pdf.pages[page_number]
-                page_text = page.extract_text() or ""
-                extracted_text += page_text
-
-        if not extracted_text.strip():  # Check if text is empty
-            print("Text not found, using OCR fallback.")
-            images = pdf_to_images(pdf_path, dpi=300)
-            for image in images:
-                extracted_text += image_to_string(preprocess_image(image))
-    except Exception as e:
-        print(f"Error extracting text with pdfplumber: {e}")
-
-    return extracted_text.strip()
-
-
-def map_beneficiaries_to_ids(text: str) -> dict:
-    """Map beneficiary names to their corresponding Member IDs."""
-    pattern = r"Beneficiary name: (.+?)\s.*?Member ID: (\d+)"
-    matches = re.findall(pattern, text, re.DOTALL)
-    return {name.strip(): member_id.strip() for name, member_id in matches}
-
-
-def ask_question(model, tokenizer, text: str, question: str) -> str:
-    """Ask a question about the document text using the loaded model."""
-    try:
-        # Encode the input text and question as a single prompt
-        prompt = f"{text}\n\n{question}"
-        inputs = tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt")
-
-        # Generate text using the model
-        outputs = model.generate(input_ids=inputs.to(model.device), max_new_tokens=150)
-
-        # Decode the output and return the answer
+        print(f"Question: {question}")
+        input_text = f"{context}\n\nQuestion: {question}"
+        inputs = tokenizer.encode(input_text, return_tensors="pt").to(model.device)
+        outputs = model.generate(inputs, max_new_tokens=100)
         answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return answer
+        answer_start = answer.find("Answer:") + len("Answer:")
+        print(f"Answer: {answer[answer_start:].strip()}")
+        return answer[answer_start:].strip()
     except Exception as e:
         print(f"Error during question answering: {e}")
-        sys.exit(1)
-
-
-def find_valid_date(text: str) -> str:
-    """Find the valid until date in the text."""
-    match = re.search(r"Valid upto: ([^\n]+)", text)
-    return match.group(1).strip() if match else "Date not found"
+        return "Unable to generate an answer."
+# def ask_question(tokenizer, model, context, question, max_length=512):
+#     """Ask a question to the model with limited context size."""
+#     try:
+#         print(f"Question: {question}")
+#         input_text = f"{context}\n\nQuestion: {question}"
+#
+#         # Tokenize and truncate input to max_length
+#         inputs = tokenizer(
+#             input_text, return_tensors="pt", max_length=max_length, truncation=True
+#         ).to(model.device)
+#
+#         outputs = model.generate(inputs.input_ids, max_new_tokens=100)
+#         answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+#         print("answer:",answer)
+#
+#         answer_start = answer.find("Answer:") + len("Answer:")
+#         print(f"Answer: {answer[answer_start:].strip()}")
+#         return answer[answer_start:].strip()
+#     except Exception as e:
+#         print(f"Error during question answering: {e}")
+#         return "Unable to generate an answer."
 
 
 def main():
-    pdf_path = "./document.pdf"
+    start = time.time()
+    pdf_path = "./p4.pdf"
+    # model_id = "google/gemma-2-2b-it"
+    model_id = "google/gemma-2-2b-it"
+    device = torch.device("mps" if torch.mps.is_available() else "cpu")
+    print(f"Device Being used: {device}")
 
-    # Extract text using pdfplumber
-    extracted_text = extract_text_with_pdfplumber(pdf_path)
+    # Extract text and tables
+    # Extract text and tables
+    extracted = extract_text_and_tables(pdf_path)
+    # print(f"Extracted Text:\n{extracted}")
+    print(f"Time elapsed: {time.time() - start}")
 
-    if not extracted_text.strip():
-        print("No text found in the document. Exiting.")
-        sys.exit(1)
+    # Answer questions
+    questions = [
+        "List of Insured Members?",
+        "What is the Room Rent included in the policy?",
+        "What is the Maternity Sum capping or sum insured?",
+        "What is the policy start date?",
+        "Sum insured for the policy?",
+        "Does the policy have copay?",
+        "what is the policy inception date",
+        "what is the waiting period? and list down the categories for waiting periods",
+        "what is the waiting period for specific disease waiting periods",
+        "what is the waiting period for maternity package ",
+    ]
 
-    # Initialize NLP model and tokenizer
-    print("Initializing NLP model...")
-    model_id = "google/gemma-1.1-2b-it"
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            device_map="cuda" if torch.cuda.is_available() else "cpu",
-            torch_dtype=torch.bfloat16,
-        )
-    except Exception as e:
-        print(f"Error loading model/tokenizer: {e}")
-        sys.exit(1)
+    # Optional: Use the model for more complex queries
+    print("\nInitializing model for advanced QA...")
+    tokenizer, model = initialize_model(model_id, device)
 
-    # Define context and question
-    context = extracted_text[:800]  # Adjust the context length as needed
-    question = "What are all the names of the beneficiaries?\nWho is the primary insured?"
+    print(f"Time elapsed: {time.time() - start}")
 
-    # Ask the question and print the answer
-    answer = ask_question(model, tokenizer, context, question)
-    print("Answer:", answer)
+    # with ThreadPoolExecutor() as executor:
+    #     results = list(
+    #         executor.map(
+    #             lambda q: ask_question(tokenizer, model, extracted, q), questions
+    #         )
+    #     )
+    for ques in questions:
+        ask_question(tokenizer, model, extracted, ques)
+    print(f"Time elapsed: {time.time() - start}")
+    # for question, answer in zip(questions, results):
+        # print(f"\nQuestion: {question}\nAnswer: {answer}")
+
 
 if __name__ == "__main__":
     main()
