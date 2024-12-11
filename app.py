@@ -11,13 +11,13 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from langchain_community.llms import HuggingFaceHub
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import ChatHuggingFace
+from langchain_huggingface import ChatHuggingFace, HuggingFaceEmbeddings
 from pdf2image import convert_from_path
 from PIL import Image
 from PyPDF2 import PdfReader
 from pytesseract import image_to_string
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from langchain_huggingface import HuggingFaceEmbeddings
+
 from htmlTemplates import bot_template, css, user_template
 
 

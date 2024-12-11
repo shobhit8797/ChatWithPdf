@@ -19,7 +19,9 @@ def extract_text_and_tables(pdf_path, max_pages=5):
         # Extract the text
         for page in pdf.pages:
             print("Extracting text...")
-            text = page.extract_text(layout=True, x_tolerance_ratio=0.5, y_tolerance_ratio=0.75)
+            text = page.extract_text(
+                layout=True, x_tolerance_ratio=0.5, y_tolerance_ratio=0.75
+            )
             print(text)
             print("*" * 100)
 

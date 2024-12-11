@@ -1,11 +1,13 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from pdf2image import convert_from_path
-from pytesseract import image_to_string
-from PIL import Image
-import pdfplumber
-import torch
 import re
 import sys
+
+import pdfplumber
+import torch
+from pdf2image import convert_from_path
+from PIL import Image
+from pytesseract import image_to_string
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 def pdf_to_images(pdf_path, dpi=150, max_pages=5):
     """Convert the first few pages of a PDF file to images."""
@@ -15,6 +17,7 @@ def pdf_to_images(pdf_path, dpi=150, max_pages=5):
     except Exception as e:
         print(f"Error during PDF to image conversion: {e}")
         sys.exit(1)
+
 
 def extract_text_with_pdfplumber(pdf_path: str, max_pages=5) -> str:
     """Extract text from the first few pages of a PDF using pdfplumber."""
@@ -34,10 +37,15 @@ def extract_text_with_pdfplumber(pdf_path: str, max_pages=5) -> str:
 
     return extracted_text.strip()
 
+
 def map_beneficiaries_to_ids(text: str) -> dict:
     """Extract beneficiary names and Member IDs."""
     pattern = r"Beneficiary name: (.+?)\s.*?Member ID: (\d+)"
-    return {name.strip(): member_id.strip() for name, member_id in re.findall(pattern, text, re.DOTALL)}
+    return {
+        name.strip(): member_id.strip()
+        for name, member_id in re.findall(pattern, text, re.DOTALL)
+    }
+
 
 def initialize_model_pipeline(model_id: str, device):
     """Initialize the tokenizer and model pipeline."""
@@ -47,6 +55,7 @@ def initialize_model_pipeline(model_id: str, device):
         torch_dtype=torch.float16 if device.type == "cuda" else torch.float32,
     ).to(device)
     return tokenizer, model
+
 
 def ask_questions(tokenizer, model, text: str, questions: list) -> dict:
     """Ask multiple questions using the text-generation pipeline."""
@@ -68,6 +77,7 @@ def ask_questions(tokenizer, model, text: str, questions: list) -> dict:
         return {question: "Unable to generate an answer."}
 
     return answers
+
 
 def main():
     pdf_path = "./document.pdf"
@@ -95,6 +105,7 @@ def main():
     # Print all answers
     for question, answer in answers.items():
         print(f"\nQuestion: {question}\nAnswer: {answer}")
+
 
 if __name__ == "__main__":
     main()

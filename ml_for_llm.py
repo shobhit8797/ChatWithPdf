@@ -14,7 +14,7 @@ cached_model = None
 cached_tokenizer = None
 
 
-def extract_text_and_tables(pdf_path, max_pages=5):
+def extract_text(pdf_path, max_pages=5):
     """Extract text and tables from the PDF."""
     text = ""
     with pdfplumber.open(pdf_path) as pdf:
@@ -62,6 +62,8 @@ def ask_question(tokenizer, model, context, question):
     except Exception as e:
         print(f"Error during question answering: {e}")
         return "Unable to generate an answer."
+
+
 # def ask_question(tokenizer, model, context, question, max_length=512):
 #     """Ask a question to the model with limited context size."""
 #     try:
