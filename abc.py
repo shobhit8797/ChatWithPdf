@@ -1,166 +1,118 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from pdf2image import convert_from_path
-from pytesseract import image_to_string
-import sys
 import re
-from pdf2image import convert_from_path
-from PIL import Image
-from transformers import pipeline
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+import pandas as pd
 import pdfplumber
+import torch
+from pdf2image import convert_from_path
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Global cache for the model and tokenizer
+cached_model = None
+cached_tokenizer = None
 
 
-def pdf_to_images(pdf_path, dpi=150):
-    """Converts a PDF file to a list of images."""
+def extract_text_and_tables(pdf_path, max_pages=5):
+    with pdfplumber.open(pdf_path) as pdf:
+        # Extract the text
+        for page in pdf.pages:
+            print("Extracting text...")
+            text = page.extract_text(layout=True, x_tolerance_ratio=0.5, y_tolerance_ratio=0.75)
+            print(text)
+            print("*" * 100)
+
+            # Extract the data
+            print("Extracting tables...")
+            tables = page.extract_table() or []
+            for table in tables:
+                print(table)
+            print("*" * 100)
+
+    return {"text": text, "tables": tables}
+
+
+def process_tables(tables):
+    """Process extracted tables into DataFrames."""
+    dataframes = []
+    for table in tables:
+        try:
+            df = pd.DataFrame(table[1:], columns=table[0])  # Use first row as headers
+            dataframes.append(df)
+        except Exception as e:
+            print(f"Error processing table: {e}")
+    return dataframes
+
+
+def format_data(text, tables):
+    """Format text and tables into a structured string."""
+    formatted = "Document Content:\n\n"
+    formatted += "Text Content:\n" + text + "\n\n"
+    for i, table in enumerate(tables):
+        formatted += f"Table {i + 1}:\n{table.to_string(index=False)}\n\n"
+    return formatted
+
+
+def initialize_model(model_id, device):
+    """Initialize or fetch the model and tokenizer."""
+    global cached_model, cached_tokenizer
+    if not cached_model or not cached_tokenizer:
+        cached_tokenizer = AutoTokenizer.from_pretrained(model_id)
+        cached_model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16 if device.type == "cuda" else torch.float32,
+        ).to(device)
+    return cached_tokenizer, cached_model
+
+
+def ask_question(tokenizer, model, context, question):
+    """Ask a question to the model."""
     try:
-        Image.MAX_IMAGE_PIXELS = None  # Handle large images
-        images = convert_from_path(pdf_path, dpi=dpi)
-        return images
-    except Exception as e:
-        print(f"Error during PDF to image conversion: {e}")
-        sys.exit(1)
-
-
-def preprocess_image(image: Image.Image) -> Image.Image:
-    """Preprocess the image to RGB format."""
-    return image.convert("RGB")
-
-
-def extract_text_with_pdfplumber(pdf_path: str) -> str:
-    """Extract text from PDF using pdfplumber."""
-    extracted_text = ""
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_number, page in enumerate(pdf.pages, start=1):
-                try:
-                    page_text = page.extract_text()
-                    if page_text:
-                        extracted_text += page_text
-                    else:
-                        extracted_text = ""
-                        break
-                except Exception as page_error:
-                    print(
-                        f"Error extracting text from page {page_number}: {page_error}"
-                    )
-
-        # Check if text is empty, indicating a scanned PDF
-        if not extracted_text.strip():
-            print("Text not found, using OCR fallback.")
-            images = convert_from_path(pdf_path, dpi=300)
-            for i, image in enumerate(images):
-                extracted_text += image_to_string(image)
-    except Exception as e:
-        print(f"Error extracting text with pdfplumber: {e}")
-
-    return extracted_text
-
-
-def map_beneficiaries_to_ids(text: str) -> dict:
-    """Map beneficiary names to their corresponding Member IDs."""
-    pattern = r"Beneficiary name: (.+?)\s.*?Member ID: (\d+)"
-    matches = re.findall(pattern, text, re.DOTALL)
-    return {name.strip(): member_id.strip() for name, member_id in matches}
-
-
-def ask_question(nlp_pipeline, text, question):
-    """Ask a question about the document text using a QA pipeline."""
-    try:
-        print(type(text))
-        result = nlp_pipeline(question=question, context=text)
-        print("result:",result)
-        return result["answer"]
+        input_text = f"{context}\n\nQuestion: {question}"
+        inputs = tokenizer.encode(input_text, return_tensors="pt").to(model.device)
+        outputs = model.generate(inputs, max_new_tokens=500)
+        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        answer_start = answer.find("Answer:") + len("Answer:")
+        return answer[answer_start:].strip()
     except Exception as e:
         print(f"Error during question answering: {e}")
-        sys.exit(1)
-
-
-def find_valid_date(text: str) -> str:
-    """Find the valid until date in the text."""
-    match = re.search(r"Valid upto: ([^\n]+)", text)
-    return match.group(1).strip() if match else "Date not found"
+        return "Unable to generate an answer."
 
 
 def main():
-    pdf_path = "/Users/shobhitgoyal/Code/ChatWithPdf/pdf_files/INSURANCE_POLICYba39340d-6fc8-4a39-813e-21a40d690e49.pdf"
+    pdf_path = "/Users/shobhitgoyal/Downloads/Insurance Policies/AADHAAR_CARD_FRONTneelam bharathi.pdf"
+    model_id = "google/gemma-1.1-2b-it"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Extract text using pdfplumber
-    print("Extracting text using pdfplumber...")
-    extracted_text = extract_text_with_pdfplumber(pdf_path)
+    # Extract text and tables
+    extracted = extract_text_and_tables(pdf_path)
+    text = extracted["text"]
+    tables = process_tables(extracted["tables"])
 
-    if not extracted_text.strip():
-        print("No text found in the document. Exiting.")
-        sys.exit(1)
+    # Format for model or use heuristics
+    # formatted_input = format_data(text, tables)
 
-    # Map beneficiary names to Member IDs
-    # print("Mapping beneficiary names to Member IDs...")
-    # beneficiary_mapping = map_beneficiaries_to_ids(extracted_text)
-    # print("Beneficiary Mapping:")
-    # for name, member_id in beneficiary_mapping.items():
-    #     print(f"{name}: {member_id}")
-
-    # print("Initializing NLP pipeline...")
-    # # nlp_pipeline = pipeline("question-answering", model="google/gemma-1.1-2b-it")
-    # nlp_pipeline = pipeline("text-generation", model="google/gemma-1.1-2b-it")
-
-    # # Example dynamic questions
+    # # Answer questions
     # questions = [
-    #     "what are all the names of the beneficiaries?",
-    #     "Who is the primary insured?",
-    #     "INSURED NAMEs in the document?",
+    #     "List of Insured Members?",
+    #     "What is the Room Rent?",
+    #     "What is the Maternity Sum capping or sum insured?",
+    #     "What is the policy start date?",
+    #     "Sum insured for the policy?",
     # ]
 
-    # for question in questions:
-    #     print(f"Question: {question}")
-    #     answer = ask_question(nlp_pipeline, extracted_text, question)
-    #     print(f"Answer: {answer}")
-    # Define context and question
-    # Import necessary classes for model loading and quantization
-    
-
-    # Configure model quantization to 4-bit for memory and computation efficiency
-    # quantization_config = BitsAndBytesConfig(load_in_4bit=True)
-
-    # Load the tokenizer for the Gemma 7B Italian model
-    tokenizer = AutoTokenizer.from_pretrained("google/gemma-1.1-2b-it")
-
-    # Load the Gemma 7B Italian model itself, with 4-bit quantization
-    model = AutoModelForCausalLM.from_pretrained("google/gemma-1.1-2b-it")
-
-    # pipe = pipeline("text-generation", model="google/gemma-1.1-2b-it")
-
-    # Combine the context and question into a single input
-    context =extracted_text[:800]
-    question = "what are all the names of the beneficiaries?\n\nWho is the primary insured?\n\nTill when the policy is valid?"
-    input_text = f"{context}\n\n{question}"
-    
-    # Tokenize the input text:
-    input_ids = tokenizer(input_text, return_tensors="pt").to("cuda")
-    # Generate text using the model:
-    outputs = model.generate(
-        **input_ids,  # Pass tokenized input as keyword argument
-        max_length=512,  # Limit output length to 512 tokens
-    )
-    # Decode the generated text:
-    print('*'*100)
-    print(tokenizer.decode(outputs[0]))
-    print('*'*100)
-    print("outputs:",outputs)
-
-
-
-
-
-    # Generate a response
-    # response = pipe(input_text, max_new_tokens=1500)  # You can adjust max_length as needed
-    # print("Response:", response)
-    # print('*'*100)
-
-    # # Print the response
-    # print(response[0]["generated_text"])
-
-    # # Find the valid until date explicitly
-    # valid_until_date = find_valid_date(extracted_text)
-    # print(f"Valid Until Date: {valid_until_date}")
+    # # Optional: Use the model for more complex queries
+    # print("\nInitializing model for advanced QA...")
+    # tokenizer, model = initialize_model(model_id, device)
+    # with ThreadPoolExecutor() as executor:
+    #     results = list(
+    #         executor.map(
+    #             lambda q: ask_question(tokenizer, model, formatted_input, q), questions
+    #         )
+    #     )
+    # for question, answer in zip(questions, results):
+    #     print(f"\nQuestion: {question}\nAnswer: {answer}")
 
 
 if __name__ == "__main__":
