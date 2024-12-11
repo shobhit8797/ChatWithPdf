@@ -1,43 +1,86 @@
+import re
+import sys
+
+import pdfplumber
 import streamlit as st
+import torch
 from dotenv import load_dotenv
-from PyPDF2 import PdfReader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
-from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
-from htmlTemplates import css, bot_template, user_template
-from langchain.llms import HuggingFaceHub
+from langchain.memory import ConversationBufferMemory
+from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceInstructEmbeddings
+from langchain_community.llms import HuggingFaceHub
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import ChatHuggingFace
+from pdf2image import convert_from_path
+from PIL import Image
+from PyPDF2 import PdfReader
+from pytesseract import image_to_string
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from langchain_huggingface import HuggingFaceEmbeddings
+from htmlTemplates import bot_template, css, user_template
+
+
+def pdf_to_images(pdf_path, dpi=150):
+    """Converts a PDF file to a list of images."""
+    try:
+        Image.MAX_IMAGE_PIXELS = None  # Handle large images
+        return convert_from_path(pdf_path, dpi=dpi)
+    except Exception as e:
+        print(f"Error during PDF to image conversion: {e}")
+        sys.exit(1)
+
+
+def preprocess_image(image: Image.Image) -> Image.Image:
+    """Preprocess the image to RGB format."""
+    return image.convert("RGB")
 
 
 def get_pdf_text(pdf_docs):
-    text = ""
-    for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-    return text
+    extracted_text = ""
+    try:
+        with pdfplumber.open(pdf_docs) as pdf:
+            for page_number in range(len(pdf.pages)):
+                page = pdf.pages[page_number]
+                page_text = page.extract_text() or ""
+                extracted_text += page_text
+        if not extracted_text.strip():  # Check if text is empty
+            print("Text not found, using OCR fallback.")
+            for image in pdf_to_images(pdf_docs, dpi=150):  # Lower DPI to save memory
+                extracted_text += image_to_string(preprocess_image(image))
+    except Exception as e:
+        print(f"Error extracting text with pdfplumber: {e}")
+    return extracted_text.strip()
 
 
 def get_text_chunks(text):
     text_splitter = CharacterTextSplitter(
-        separator="\n", chunk_size=1000, chunk_overlap=200, length_function=len
+        separator="\n",
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len,
+        is_separator_regex=False,
     )
     chunks = text_splitter.split_text(text)
     return chunks
 
 
 def get_vectorstore(text_chunks):
-    embeddings = OpenAIEmbeddings()
-    # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
+    # embeddings = OpenAIEmbeddings()
+    embeddings = HuggingFaceInstructEmbeddings(
+        model_name="google/gemma-1.1-2b-it",
+        device=0,
+    )
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
 
 def get_conversation_chain(vectorstore):
-    llm = ChatOpenAI()
-    # llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
+    # llm = ChatOpenAI()
+    llm = HuggingFaceHub(
+        repo_id="google/gemma-1.1-2b-it",
+        model_kwargs={"temperature": 0.5, "max_length": 256},
+    )
 
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     conversation_chain = ConversationalRetrievalChain.from_llm(

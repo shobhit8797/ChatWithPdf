@@ -36,7 +36,6 @@ def extract_text_and_tables(pdf_path, max_pages=5):
     # return extracted_data
 
 
-
 def initialize_model(model_id, device):
     """Initialize or fetch the model and tokenizer."""
     global cached_model, cached_tokenizer
@@ -96,7 +95,7 @@ def main():
 
     # Extract text and tables
     # Extract text and tables
-    extracted = extract_text_and_tables(pdf_path)
+    extracted = extract_text(pdf_path)
     # print(f"Extracted Text:\n{extracted}")
     print(f"Time elapsed: {time.time() - start}")
 
@@ -123,7 +122,7 @@ def main():
         ask_question(tokenizer, model, extracted, ques)
     print(f"Time elapsed: {time.time() - start}")
     # for question, answer in zip(questions, results):
-        # print(f"\nQuestion: {question}\nAnswer: {answer}")
+    # print(f"\nQuestion: {question}\nAnswer: {answer}")
 
 
 if __name__ == "__main__":
