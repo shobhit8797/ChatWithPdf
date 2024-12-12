@@ -1,81 +1,181 @@
+import time
+import logging
 import torch
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings, ChatHuggingFace
-from langchain_huggingface import HuggingFaceEndpoint, HuggingFacePipeline
+from langchain_huggingface import HuggingFacePipeline
+import re
 
-# Load PDF and split into chunks
-file_path = "./p4.pdf"
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
-loader = PyPDFLoader(file_path)
-pages = [page.page_content for page in loader.lazy_load()]
-
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=200)
-chunks = []
-for page in pages:
-    chunks.extend(text_splitter.split_text(page))
-
-# Prepare documents
-documents = [
-    Document(page_content=chunk, metadata={"source": "pdf"}) for chunk in chunks
-]
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
-# Initialize with an embedding model
-embedding_model = "sentence-transformers/all-MiniLM-l6-v2"
-model_kwargs = {"device": "cpu" if torch.mps.is_available() else "cpu"}
-encode_kwargs = {"normalize_embeddings": False}
-embeddings = HuggingFaceEmbeddings(
-    model_name=embedding_model, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs
-)
-
-# Add documents to vector store
-vector_store = InMemoryVectorStore(embedding=embeddings)
-vector_store.add_documents(documents=documents)
-
-# Perform similarity search
-query = "when did I have pancakes"
-retriever = vector_store.as_retriever()
-retrieved_docs = retriever.invoke(query)
-
-# Define LLM endpoint
-model_id = "google/gemma-1.1-2b-it"
-# llm = HuggingFaceEndpoint(
-#     repo_id=model_id,
-#     task="text-generation",
-#     max_new_tokens=512,
-#     do_sample=False,
-#     repetition_penalty=1.03,
-#     huggingfacehub_api_token="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",
-# )
-llm = HuggingFacePipeline.from_model_id(
-    model_id=model_id,
-    task="text-generation",
-    pipeline_kwargs={
+# Constants and Configurations
+CONFIG = {
+    "file_path": "./p1.pdf",
+    "model_id": "google/gemma-2-2b-it",
+    "embedding_model": "sentence-transformers/all-MiniLM-l6-v2",
+    "questions": [
+        "List of Insured Members?",
+        "What is the Room Rent included in the policy?",
+        "What is the Maternity Sum capping or sum insured?",
+        "What is the policy start date?",
+        "Sum insured for the policy?",
+        "Does the policy have copay?",
+        "what is the policy inception date",
+        "what is the waiting period? and list down the categories for waiting periods",
+        "what is the waiting period for specific disease waiting periods",
+        "what is the waiting period for maternity package ",
+    ],
+    "chunk_size": 800,
+    "chunk_overlap": 200,
+    "pipeline_kwargs": {
         "max_new_tokens": 100,
         "top_k": 50,
         "temperature": 0.1,
-    },
-    device_map="cpu",
-    trust_remote_code=True
-)
+    }
+}
 
 
-# Prepare for chat
-chat = ChatHuggingFace(llm=llm, verbose=True)
-initial_context = "\n".join([doc.page_content for doc in retrieved_docs])
+def log_time(task_name, start_time):
+    elapsed_time = time.time() - start_time
+    logger.info(f"{task_name} completed in {elapsed_time:.2f} seconds")
 
-# Chat messages
-messages = [
-    {
-        "role": "user",
-        "content": initial_context,
-    },
-    {"role": "assistant", "content": "process the above text"},
-    {"role": "user", "content": "When did I have pancakes?"},
-]
-response = chat.invoke(messages)
 
-# Output results
-print("Chat Response:", response)
+def load_pdf(file_path):
+    logger.info("Starting PDF loading")
+    start_time = time.time()
+    loader = PyPDFLoader(file_path)
+    pages = [page.page_content for page in loader.lazy_load()]
+    log_time("PDF loading", start_time)
+    return pages
+
+
+def split_text(pages, chunk_size, chunk_overlap):
+    logger.info("Starting text splitting")
+    start_time = time.time()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    chunks = [chunk for page in pages for chunk in text_splitter.split_text(page)]
+    log_time("Text splitting", start_time)
+    return chunks
+
+
+def prepare_documents(chunks):
+    logger.info("Preparing documents")
+    start_time = time.time()
+    documents = [Document(page_content=chunk, metadata={"source": "pdf"}) for chunk in chunks]
+    log_time("Document preparation", start_time)
+    return documents
+
+
+def initialize_embeddings(model_name, device):
+    logger.info("Initializing embedding model")
+    start_time = time.time()
+    embeddings = HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs={"device": device},
+        encode_kwargs={"normalize_embeddings": False}
+    )
+    log_time("Embedding model initialization", start_time)
+    return embeddings
+
+
+def populate_vector_store(embeddings, documents):
+    logger.info("Adding documents to vector store")
+    start_time = time.time()
+    vector_store = InMemoryVectorStore(embedding=embeddings)
+    vector_store.add_documents(documents=documents)
+    log_time("Vector store population", start_time)
+    return vector_store
+
+
+def perform_similarity_search(vector_store, query):
+    logger.info("Performing similarity search")
+    start_time = time.time()
+    retriever = vector_store.as_retriever()
+    retrieved_docs = retriever.invoke(query)
+    log_time("Similarity search", start_time)
+    return retrieved_docs
+
+
+def initialize_llm(model_id, pipeline_kwargs):
+    logger.info("Initializing LLM")
+    start_time = time.time()
+    llm = HuggingFacePipeline.from_model_id(
+        model_id=model_id,
+        task="text-generation",
+        pipeline_kwargs=pipeline_kwargs,
+    )
+    log_time("LLM initialization", start_time)
+    return llm
+
+
+def prepare_chat_context(retrieved_docs):
+    logger.info("Preparing chat context")
+    start_time = time.time()
+    initial_context = "\n".join([doc.page_content for doc in retrieved_docs])
+    log_time("Chat context preparation", start_time)
+    return initial_context
+
+
+def invoke_chat(llm, messages):
+    logger.info("Starting chat invocation")
+    start_time = time.time()
+    chat = ChatHuggingFace(llm=llm, verbose=True)
+    response = chat.invoke(messages)
+    log_time("Chat invocation", start_time)
+    return response
+
+
+def parse_response(response):
+    logger.info("Parsing response")
+    start_time = time.time()
+    insured_members = re.findall(r"\*\*List of insured members:\*\*\\n\\n- (.*?)\\n", response, re.DOTALL)
+    individuals_insured = re.findall(r"\*\*Individuals insured:\*\*\\n\\n- (.*?)\\n", response, re.DOTALL)
+
+    parsed_result = {
+        "insured_members": insured_members,
+        "individuals_insured": individuals_insured
+    }
+    log_time("Response parsing", start_time)
+    return parsed_result
+
+
+def main():
+    # Load and process the PDF
+    pages = load_pdf(CONFIG["file_path"])
+    chunks = split_text(pages, CONFIG["chunk_size"], CONFIG["chunk_overlap"])
+    documents = prepare_documents(chunks)
+
+    # Initialize embeddings and vector store
+    device = torch.device("mps" if torch.mps.is_available() else "cpu")
+    embeddings = initialize_embeddings(CONFIG["embedding_model"], device)
+    vector_store = populate_vector_store(embeddings, documents)
+
+    # Perform similarity search and initialize LLM
+    llm = initialize_llm(CONFIG["model_id"], CONFIG["pipeline_kwargs"])
+
+    # Process each question and retrieve responses
+    for question in CONFIG["questions"]:
+        retrieved_docs = perform_similarity_search(vector_store, question)
+        initial_context = prepare_chat_context(retrieved_docs)
+
+        messages = [
+            {"role": "user", "content": initial_context},
+            {"role": "assistant", "content": "process the above text"},
+            {"role": "user", "content": question},
+        ]
+        response = invoke_chat(llm, messages)
+
+        # Parse and output results
+        logger.info("Chat completed. Parsing response.")
+        print("response.content:", response.content)
+        # parsed_response = parse_response(response.content)
+        # print(f"Parsed Response for question '{question}':", parsed_response)
+
+
+if __name__ == "__main__":
+    main()
