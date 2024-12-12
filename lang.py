@@ -133,15 +133,11 @@ def invoke_chat(llm, messages):
 def parse_response(response):
     logger.info("Parsing response")
     start_time = time.time()
-    insured_members = re.findall(r"\*\*List of insured members:\*\*\\n\\n- (.*?)\\n", response, re.DOTALL)
-    individuals_insured = re.findall(r"\*\*Individuals insured:\*\*\\n\\n- (.*?)\\n", response, re.DOTALL)
+    question = response.split("<start_of_turn>user")[-1].split("<end_of_turn>")[0]
+    final_response = response.split("<start_of_turn>model")[-1]
 
-    parsed_result = {
-        "insured_members": insured_members,
-        "individuals_insured": individuals_insured
-    }
     log_time("Response parsing", start_time)
-    return parsed_result
+    return question, final_response
 
 
 def main():
@@ -172,9 +168,9 @@ def main():
 
         # Parse and output results
         logger.info("Chat completed. Parsing response.")
-        print("response.content:", response.content)
-        # parsed_response = parse_response(response.content)
-        # print(f"Parsed Response for question '{question}':", parsed_response)
+        question, answer = parse_response(response.content)
+        print(f"Question: {question}")
+        print(f"Answer: {answer}")
 
 
 if __name__ == "__main__":
