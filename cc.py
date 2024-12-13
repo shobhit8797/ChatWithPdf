@@ -27,9 +27,10 @@ for chunk in chunks:
     if "Table" in str(type(chunk)):
         tables.append(chunk)
 
-
     if "CompositeElement" in str(type((chunk))):
         texts.append(chunk)
+
+
 # Get the images from the CompositeElement objects
 def get_images_base64(chunks):
     images_b64 = []
@@ -44,11 +45,12 @@ def get_images_base64(chunks):
 
 images = get_images_base64(chunks)
 import uuid
-from langchain.vectorstores import Chroma
-from langchain.storage import InMemoryStore
-from langchain.schema.document import Document
+
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers.multi_vector import MultiVectorRetriever
+from langchain.schema.document import Document
+from langchain.storage import InMemoryStore
+from langchain.vectorstores import Chroma
 
 # The vectorstore to use to index the child chunks
 vectorstore = Chroma(
@@ -91,10 +93,11 @@ summary_img = [
 ]
 retriever.vectorstore.add_documents(summary_img)
 retriever.docstore.mset(list(zip(img_ids, images)))
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_openai import ChatOpenAI
 from base64 import b64decode
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
+from langchain_openai import ChatOpenAI
 
 
 def parse_docs(docs):

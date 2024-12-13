@@ -1,26 +1,32 @@
-import time
 import logging
-import torch
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings, ChatHuggingFace
-from langchain_huggingface import HuggingFacePipeline
 import re
+import time
+
+import torch
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.documents import Document
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_huggingface import (
+    ChatHuggingFace,
+    HuggingFaceEmbeddings,
+    HuggingFacePipeline,
+)
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Constants and Configurations
 CONFIG = {
-    "file_path": "./p1.pdf",
+    "file_path": "./p5.pdf",
     "model_id": "google/gemma-2-2b-it",
     "embedding_model": "sentence-transformers/all-MiniLM-l6-v2",
     "questions": [
         "List of Insured Members?",
-        "What is the Room Rent included in the policy?",
+        "What is the Room Rent amount or room type included in the policy?",
         "What is the Maternity Sum capping or sum insured?",
         "What is the policy start date?",
         "Sum insured for the policy?",
@@ -36,7 +42,7 @@ CONFIG = {
         "max_new_tokens": 100,
         "top_k": 50,
         "temperature": 0.1,
-    }
+    },
 }
 
 
@@ -57,7 +63,9 @@ def load_pdf(file_path):
 def split_text(pages, chunk_size, chunk_overlap):
     logger.info("Starting text splitting")
     start_time = time.time()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
     chunks = [chunk for page in pages for chunk in text_splitter.split_text(page)]
     log_time("Text splitting", start_time)
     return chunks
@@ -66,7 +74,9 @@ def split_text(pages, chunk_size, chunk_overlap):
 def prepare_documents(chunks):
     logger.info("Preparing documents")
     start_time = time.time()
-    documents = [Document(page_content=chunk, metadata={"source": "pdf"}) for chunk in chunks]
+    documents = [
+        Document(page_content=chunk, metadata={"source": "pdf"}) for chunk in chunks
+    ]
     log_time("Document preparation", start_time)
     return documents
 
@@ -77,7 +87,7 @@ def initialize_embeddings(model_name, device):
     embeddings = HuggingFaceEmbeddings(
         model_name=model_name,
         model_kwargs={"device": device},
-        encode_kwargs={"normalize_embeddings": False}
+        encode_kwargs={"normalize_embeddings": False},
     )
     log_time("Embedding model initialization", start_time)
     return embeddings
