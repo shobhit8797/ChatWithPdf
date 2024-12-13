@@ -54,8 +54,11 @@ def initialize_model(model_id, device):
     global cached_model, cached_tokenizer
     if not cached_model or not cached_tokenizer:
         cached_tokenizer = AutoTokenizer.from_pretrained(
-            model_id, padding=True, truncation=True, max_length=512,
-            safe_serialization=False
+            model_id,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            safe_serialization=False,
         )
         cached_model = AutoModelForCausalLM.from_pretrained(
             model_id,
@@ -128,7 +131,7 @@ def main():
             "max_length": 512,
         },
         device=device,
-        truncation=True
+        truncation=True,
     )
     print("Pipeline created")
     llm = HuggingFacePipeline(
@@ -137,9 +140,7 @@ def main():
     )
     print("llm initialized")
     retriever = VectorStoreRetriever(vectorstore=vector_store)
-    qa = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", retriever=retriever
-    )
+    qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
     print("RetrievalQA initialized")
     qa.invoke("Write an educational story for young children.")
     print("qa invoked")
