@@ -21,19 +21,19 @@ logger = logging.getLogger(__name__)
 
 # Constants and Configurations
 CONFIG = {
-    "file_path": "./p5.pdf",
+    "file_path": "./p3.pdf",
     "model_id": "google/gemma-2-2b-it",
     "embedding_model": "sentence-transformers/all-MiniLM-l6-v2",
     "questions": [
-        "List of Insured Members?",
+        "List of Insured Members | Person?",
         "What is the Room Rent amount or room type included in the policy?",
         "What is the Maternity Sum capping or sum insured?",
         "What is the policy start date?",
         "Sum insured for the policy?",
         "Does the policy have copay?",
-        "what is the policy inception date",
-        "what is the waiting period? and list down the categories for waiting periods",
-        "what is the waiting period for specific disease waiting periods",
+        # "what is the policy inception date",
+        # "what is the waiting period? and list down the categories for waiting periods",
+        # "what is the waiting period for specific disease waiting periods",
         "what is the waiting period for maternity package ",
     ],
     "chunk_size": 800,
