@@ -2,6 +2,7 @@ import logging
 import re
 import time
 
+import faiss
 import torch
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
@@ -71,10 +72,16 @@ def split_text(pages, chunk_size, chunk_overlap):
     logger.info("Starting text splitting")
     start_time = time.time()
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    chunks = [clean_ambiguity(chunk) for page in pages for chunk in text_splitter.split_text(page)]
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
+    chunks = [
+        clean_ambiguity(chunk)
+        for page in pages
+        for chunk in text_splitter.split_text(page)
+    ]
     log_time("Text splitting", start_time)
     return chunks
+
 
 def prepare_documents(chunks):
     logger.info("Preparing documents")
@@ -101,8 +108,21 @@ def initialize_embeddings(model_name, device):
 def populate_vector_store(embeddings, documents):
     logger.info("Adding documents to vector store")
     start_time = time.time()
-    vector_store = InMemoryVectorStore(embedding=embeddings)
-    vector_store.add_documents(documents=documents)
+
+    # vector_store = InMemoryVectorStore(embedding=embeddings)
+    # vector_store.add_documents(documents=documents)
+
+    store = InMemoryDocstore()
+    vector_dimension = len(embeddings.embed_query("hello world"))
+    index = faiss.IndexFlatL2(vector_dimension)
+    vector_store = FAISS(
+        embedding_function=embeddings,
+        index=index,
+        docstore=store,
+        index_to_docstore_id={},
+    )
+    vector_store.add_documents(docs)
+
     log_time("Vector store population", start_time)
     return vector_store
 
