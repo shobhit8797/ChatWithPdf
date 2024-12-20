@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Constants and Configurations
 CONFIG = {
-    "file_path": "./p3.pdf",
+    "file_path": "./p1.pdf",
     "model_id": "google/gemma-2-2b-it",
     "embedding_model": "sentence-transformers/all-MiniLM-l6-v2",
     "questions": [
@@ -29,11 +29,11 @@ CONFIG = {
         "What is the Room Rent amount or room type included in the policy?",
         "What is the Maternity Sum capping or sum insured?",
         "What is the policy start date?",
-        "Sum insured for the policy?",
+        "Total Sum Insured for the policy?",
         "Does the policy have copay?",
-        # "what is the policy inception date",
-        # "what is the waiting period? and list down the categories for waiting periods",
-        # "what is the waiting period for specific disease waiting periods",
+        "what is the policy inception date",
+        "what is the waiting period? and list down the categories for waiting periods",
+        "what is the waiting period for specific disease waiting periods",
         "what is the waiting period for maternity package ",
     ],
     "chunk_size": 800,
@@ -60,16 +60,21 @@ def load_pdf(file_path):
     return pages
 
 
+def clean_ambiguity(text):
+    text = text.replace("\n", " ")
+    text = text.replace("\\", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
 def split_text(pages, chunk_size, chunk_overlap):
     logger.info("Starting text splitting")
     start_time = time.time()
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, chunk_overlap=chunk_overlap
-    )
-    chunks = [chunk for page in pages for chunk in text_splitter.split_text(page)]
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    chunks = [clean_ambiguity(chunk) for page in pages for chunk in text_splitter.split_text(page)]
     log_time("Text splitting", start_time)
     return chunks
-
 
 def prepare_documents(chunks):
     logger.info("Preparing documents")
@@ -132,16 +137,16 @@ def prepare_chat_context(retrieved_docs):
 
 
 def invoke_chat(llm, messages):
-    logger.info("Starting chat invocation")
+    # logger.info("Starting chat invocation")
     start_time = time.time()
     chat = ChatHuggingFace(llm=llm, verbose=True)
     response = chat.invoke(messages)
-    log_time("Chat invocation", start_time)
+    # log_time("Chat invocation", start_time)
     return response
 
 
 def parse_response(response):
-    logger.info("Parsing response")
+    # logger.info("Parsing response")
     start_time = time.time()
     question = response.split("<start_of_turn>user")[-1].split("<end_of_turn>")[0]
     final_response = response.split("<start_of_turn>model")[-1]
