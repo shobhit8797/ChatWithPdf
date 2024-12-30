@@ -6,16 +6,13 @@ altair==5.5.0
 tiktoken==0.8.0
 
 # Uncomment to use Hugging Face LLMs
-huggingface-hub==0.26.3
+pdf2image==1.17.0
 
 # Uncomment to use instructor embeddings
 InstructorEmbedding==1.0.1
 
-sentence-transformers==3.3.1
-pdf2image==1.17.0
-langchain-huggingface==0.1.2
-langchain==0.3.11
+
+
+
 jupyter==1.1.1
 unstructured[all-docs]
-pillow
-lxml
